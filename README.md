@@ -20,8 +20,9 @@ Each line is:
 description,quantity,unit_price_cents,amount_cents
 ```
 
-- `description` - free text, currently must not contain a comma (see
-  "Limitations" below)
+- `description` - free text; wrap it in double quotes if it needs to
+  contain a comma, e.g. `"widgets, deluxe"`. A literal quote inside a
+  quoted field is written as `""`.
 - `quantity` - decimal, e.g. `2.5`
 - `unit_price_cents` and `amount_cents` - integers, in cents, to avoid
   float rounding when totals get summed
@@ -31,6 +32,7 @@ Example:
 ```
 16GB RAM upgrade,1,4500,4500
 consulting hours,3.5,12000,42000
+"widgets, deluxe",3,1250,3750
 ```
 
 Blank lines are skipped. Anything else that doesn't fit the shape above
@@ -79,9 +81,6 @@ fn main() {
 
 This is an early skeleton. Known gaps:
 
-- No support for quoted fields, so a description containing a comma will
-  misparse. Real invoice exports often quote free text, so this needs
-  fixing before the library is useful on real data.
 - `amount_cents` is taken as given from the input; nothing currently
   checks it against `quantity * unit_price_cents`.
 - No writer/serializer yet, only reading.
