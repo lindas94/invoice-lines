@@ -37,7 +37,8 @@ consulting hours,3.5,12000,42000
 
 Blank lines are skipped. Anything else that doesn't fit the shape above
 produces a `ParseError` that names the line number and what was wrong
-with it.
+with it, including a row where `amount_cents` doesn't match `quantity *
+unit_price_cents` (rounded to the nearest cent).
 
 ## Usage
 
@@ -81,8 +82,6 @@ fn main() {
 
 This is an early skeleton. Known gaps:
 
-- `amount_cents` is taken as given from the input; nothing currently
-  checks it against `quantity * unit_price_cents`.
 - No writer/serializer yet, only reading.
 
 ## License

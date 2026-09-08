@@ -21,6 +21,7 @@ pub enum ParseError {
     InvalidQuantity(String),
     InvalidUnitPrice(String),
     InvalidAmount(String),
+    AmountMismatch { expected: i64, found: i64 },
 }
 
 impl fmt::Display for ParseError {
@@ -34,6 +35,11 @@ impl fmt::Display for ParseError {
             ParseError::InvalidQuantity(s) => write!(f, "invalid quantity: {:?}", s),
             ParseError::InvalidUnitPrice(s) => write!(f, "invalid unit price: {:?}", s),
             ParseError::InvalidAmount(s) => write!(f, "invalid amount: {:?}", s),
+            ParseError::AmountMismatch { expected, found } => write!(
+                f,
+                "amount_cents is {} but quantity * unit_price_cents is {}",
+                found, expected
+            ),
         }
     }
 }
@@ -115,6 +121,18 @@ impl LineItem {
             .parse()
             .map_err(|_| ParseError::InvalidAmount(fields[3].clone()))?;
 
+        // Rounded rather than compared as floats: quantity carries a few
+        // decimal places at most, so the product lands within a fraction of
+        // a cent of the true value and rounding to the nearest cent is
+        // exact for every quantity this format is meant to carry.
+        let expected_amount_cents = (quantity * unit_price_cents as f64).round() as i64;
+        if expected_amount_cents != amount_cents {
+            return Err(ParseError::AmountMismatch {
+                expected: expected_amount_cents,
+                found: amount_cents,
+            });
+        }
+
         Ok(LineItem {
             description: description.to_string(),
             quantity,
@@ -178,5 +196,23 @@ mod tests {
     fn leaves_an_embedded_quote_alone_when_not_at_field_start() {
         let item = LineItem::parse("6\" pipe, 1, 500, 500").unwrap();
         assert_eq!(item.description, "6\" pipe");
+    }
+
+    #[test]
+    fn rejects_an_amount_that_does_not_match_quantity_times_unit_price() {
+        let err = LineItem::parse("widget, 3, 1250, 4000").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError::AmountMismatch {
+                expected: 3750,
+                found: 4000
+            }
+        );
+    }
+
+    #[test]
+    fn accepts_an_amount_that_rounds_to_the_nearest_cent() {
+        let item = LineItem::parse("bulk item, 0.1, 3, 0").unwrap();
+        assert_eq!(item.amount_cents, 0);
     }
 }
