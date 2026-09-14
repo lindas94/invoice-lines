@@ -87,7 +87,46 @@ fn split_fields(line: &str) -> Result<Vec<String>, ParseError> {
     Ok(fields)
 }
 
+/// Wraps a field in double quotes and doubles any quotes inside it, if
+/// that's needed for the field to round-trip through [`split_fields`].
+///
+/// Quoting is required when the field contains a comma, a quote, or a
+/// line break, or when it starts with a quote - `split_fields` treats a
+/// leading quote as the start of a quoted field regardless of intent, so
+/// an unquoted field that happens to start with `"` would be misread.
+fn quote_field_if_needed(field: &str) -> String {
+    let needs_quoting =
+        field.starts_with('"') || field.contains(['"', ',', '\n', '\r']);
+    if !needs_quoting {
+        return field.to_string();
+    }
+    let mut quoted = String::with_capacity(field.len() + 2);
+    quoted.push('"');
+    for c in field.chars() {
+        if c == '"' {
+            quoted.push('"');
+        }
+        quoted.push(c);
+    }
+    quoted.push('"');
+    quoted
+}
+
 impl LineItem {
+    /// Formats this line item back into the
+    /// `description,quantity,unit_price_cents,amount_cents` line format,
+    /// without a trailing newline. Quotes the description if it needs it
+    /// to round-trip through [`LineItem::parse`].
+    pub fn to_line(&self) -> String {
+        format!(
+            "{},{},{},{}",
+            quote_field_if_needed(&self.description),
+            self.quantity,
+            self.unit_price_cents,
+            self.amount_cents
+        )
+    }
+
     /// Parses a single line in the form
     /// `description,quantity,unit_price_cents,amount_cents`.
     ///
@@ -214,5 +253,42 @@ mod tests {
     fn accepts_an_amount_that_rounds_to_the_nearest_cent() {
         let item = LineItem::parse("bulk item, 0.1, 3, 0").unwrap();
         assert_eq!(item.amount_cents, 0);
+    }
+
+    #[test]
+    fn formats_a_plain_line_without_quoting() {
+        let item = LineItem::parse("widget, 3, 1250, 3750").unwrap();
+        assert_eq!(item.to_line(), "widget,3,1250,3750");
+    }
+
+    #[test]
+    fn quotes_a_description_containing_a_comma_when_formatting() {
+        let item = LineItem::parse("\"widgets, deluxe\", 3, 1250, 3750").unwrap();
+        assert_eq!(item.to_line(), "\"widgets, deluxe\",3,1250,3750");
+    }
+
+    #[test]
+    fn doubles_quotes_inside_a_quoted_description_when_formatting() {
+        let item = LineItem::parse("\"6\"\" pipe\", 1, 500, 500").unwrap();
+        assert_eq!(item.to_line(), "\"6\"\" pipe\",1,500,500");
+    }
+
+    #[test]
+    fn quotes_a_description_that_starts_with_a_quote_even_without_a_comma() {
+        let item = LineItem {
+            description: "\"inch mark".to_string(),
+            quantity: 1.0,
+            unit_price_cents: 500,
+            amount_cents: 500,
+        };
+        assert_eq!(item.to_line(), "\"\"\"inch mark\",1,500,500");
+    }
+
+    #[test]
+    fn round_trips_through_parse_and_to_line() {
+        let original = LineItem::parse("\"widgets, deluxe\", 3.5, 1250, 4375").unwrap();
+        let formatted = original.to_line();
+        let reparsed = LineItem::parse(&formatted).unwrap();
+        assert_eq!(original, reparsed);
     }
 }

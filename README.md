@@ -78,11 +78,29 @@ fn main() {
 }
 ```
 
+`LineItemWriter` writes items back out in the same format, one at a time:
+
+```rust
+use invoice_lines::{LineItem, LineItemWriter};
+use std::fs::File;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::create("out.csv")?;
+    let mut writer = LineItemWriter::new(file);
+
+    let item = LineItem::parse("widget, 3, 1250, 3750")?;
+    writer.write_item(&item)?;
+    writer.flush()?;
+    Ok(())
+}
+```
+
 ## Limitations
 
 This is an early skeleton. Known gaps:
 
-- No writer/serializer yet, only reading.
+- No header-row option or configurable delimiter yet - the format is
+  fixed at four comma-separated fields.
 
 ## License
 

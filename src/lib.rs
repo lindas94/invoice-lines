@@ -5,6 +5,8 @@
 
 mod line_item;
 mod reader;
+mod writer;
 
 pub use line_item::{LineItem, ParseError};
 pub use reader::{LineItemReader, ReadError};
+pub use writer::LineItemWriter;
