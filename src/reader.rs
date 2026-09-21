@@ -36,6 +36,8 @@ pub struct LineItemReader<R> {
     inner: BufReader<R>,
     buf: String,
     line_no: u64,
+    delimiter: char,
+    has_header: bool,
 }
 
 impl<R: Read> LineItemReader<R> {
@@ -44,7 +46,22 @@ impl<R: Read> LineItemReader<R> {
             inner: BufReader::new(source),
             buf: String::new(),
             line_no: 0,
+            delimiter: ',',
+            has_header: false,
         }
+    }
+
+    /// Treats the first line of the input as a header and skips it instead
+    /// of parsing it as a line item. Off by default.
+    pub fn with_header(mut self, has_header: bool) -> Self {
+        self.has_header = has_header;
+        self
+    }
+
+    /// Sets the field delimiter. Defaults to `,`.
+    pub fn with_delimiter(mut self, delimiter: char) -> Self {
+        self.delimiter = delimiter;
+        self
     }
 }
 
@@ -63,14 +80,22 @@ impl<R: Read> Iterator for LineItemReader<R> {
             }
             self.line_no += 1;
 
+            if self.has_header && self.line_no == 1 {
+                continue;
+            }
+
             if self.buf.trim().is_empty() {
                 continue;
             }
 
-            return Some(LineItem::parse(&self.buf).map_err(|source| ReadError::Parse {
-                line: self.line_no,
-                source,
-            }));
+            return Some(
+                LineItem::parse_with_delimiter(&self.buf, self.delimiter).map_err(|source| {
+                    ReadError::Parse {
+                        line: self.line_no,
+                        source,
+                    }
+                }),
+            );
         }
     }
 }
@@ -98,5 +123,35 @@ mod tests {
             Err(ReadError::Parse { line, .. }) => assert_eq!(*line, 2),
             other => panic!("expected a parse error, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn skips_a_header_row_when_enabled() {
+        let input = "description,quantity,unit_price_cents,amount_cents\nwidget, 3, 1250, 3750\n";
+        let reader = LineItemReader::new(input.as_bytes()).with_header(true);
+        let items: Vec<LineItem> = reader.map(|r| r.unwrap()).collect();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].description, "widget");
+    }
+
+    #[test]
+    fn reports_line_numbers_relative_to_the_file_when_a_header_is_skipped() {
+        let input = "header\nwidget, 3, 1250, 3750\nbroken row\n";
+        let reader = LineItemReader::new(input.as_bytes()).with_header(true);
+        let results: Vec<_> = reader.collect();
+        match &results[1] {
+            Err(ReadError::Parse { line, .. }) => assert_eq!(*line, 3),
+            other => panic!("expected a parse error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn reads_a_tab_delimited_file() {
+        let input = "widget\t3\t1250\t3750\ngadget\t1\t999\t999\n";
+        let reader = LineItemReader::new(input.as_bytes()).with_delimiter('\t');
+        let items: Vec<LineItem> = reader.map(|r| r.unwrap()).collect();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].description, "widget");
+        assert_eq!(items[1].description, "gadget");
     }
 }

@@ -61,6 +61,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+If the file has a header row or uses a different delimiter, configure the
+reader before iterating:
+
+```rust
+use invoice_lines::LineItemReader;
+
+let reader = LineItemReader::new(file)
+    .with_header(true)
+    .with_delimiter('\t');
+```
+
 `LineItemReader` works over anything implementing `std::io::Read`, so it
 also reads directly from a socket or a pipe without changes:
 
@@ -99,8 +110,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 This is an early skeleton. Known gaps:
 
-- No header-row option or configurable delimiter yet - the format is
-  fixed at four comma-separated fields.
+- No test yet confirming memory use actually stays constant on a large
+  input, rather than just trusting the streaming design.
 
 ## License
 

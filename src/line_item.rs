@@ -52,7 +52,7 @@ impl std::error::Error for ParseError {}
 /// literal quote inside a quoted field is written as `""`. Quoting only
 /// takes effect if the quote is the first non-whitespace character of the
 /// field, so `abc"def` is left alone rather than treated as malformed.
-fn split_fields(line: &str) -> Result<Vec<String>, ParseError> {
+fn split_fields(line: &str, delimiter: char) -> Result<Vec<String>, ParseError> {
     let mut fields = Vec::new();
     let mut field = String::new();
     let mut in_quotes = false;
@@ -73,7 +73,7 @@ fn split_fields(line: &str) -> Result<Vec<String>, ParseError> {
         } else if c == '"' && field.trim().is_empty() {
             field.clear();
             in_quotes = true;
-        } else if c == ',' {
+        } else if c == delimiter {
             fields.push(std::mem::take(&mut field));
         } else {
             field.push(c);
@@ -134,7 +134,14 @@ impl LineItem {
     /// e.g. `"widgets, deluxe",3,1250,3750`. A literal quote inside a
     /// quoted field is written as `""`.
     pub fn parse(line: &str) -> Result<LineItem, ParseError> {
-        let fields = split_fields(line.trim_end_matches(['\r', '\n']))?;
+        Self::parse_with_delimiter(line, ',')
+    }
+
+    /// Like [`LineItem::parse`], but splits fields on `delimiter` instead
+    /// of a comma. The quoting rules are unchanged, and quoting is still
+    /// the only way to carry a literal delimiter inside a field.
+    pub fn parse_with_delimiter(line: &str, delimiter: char) -> Result<LineItem, ParseError> {
+        let fields = split_fields(line.trim_end_matches(['\r', '\n']), delimiter)?;
         if fields.len() != 4 {
             return Err(ParseError::WrongFieldCount {
                 expected: 4,
@@ -282,6 +289,19 @@ mod tests {
             amount_cents: 500,
         };
         assert_eq!(item.to_line(), "\"\"\"inch mark\",1,500,500");
+    }
+
+    #[test]
+    fn parses_a_tab_delimited_line() {
+        let item = LineItem::parse_with_delimiter("widget\t3\t1250\t3750", '\t').unwrap();
+        assert_eq!(item.description, "widget");
+        assert_eq!(item.amount_cents, 3750);
+    }
+
+    #[test]
+    fn quoted_field_can_contain_the_default_comma_delimiter_under_a_different_delimiter() {
+        let item = LineItem::parse_with_delimiter("\"widgets, deluxe\"\t3\t1250\t3750", '\t').unwrap();
+        assert_eq!(item.description, "widgets, deluxe");
     }
 
     #[test]
